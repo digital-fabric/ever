@@ -50,7 +50,7 @@ class LoopTest < MiniTest::Test
     i, o = IO.pipe
     @loop.watch_io('foo', i, false, true)
 
-    Thread.new { o << 'bar'; @loop.emit('baz') }
+    Thread.new { @loop.emit('baz'); o << 'bar' }
 
     event = @loop.next_event
     assert_equal 'baz', event
