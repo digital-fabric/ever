@@ -17,17 +17,19 @@ Ever is a [libev](http://pod.tst.eu/http://cvs.schmorp.de/libev/ev.pod)-based ev
 
 ## Rationale
 
-I'm planning to add a compatibility mode to [Tipi](https://github.com/digital-fabric/tipi), a new [Polyphony](https://github.com/digital-fabric/polyphony)-based web server for Ruby. In this mode, Tipi will not be using Polyphony, but will employ multiple worker threads for handling concurrent requests.
+I'm planning to add a compatibility mode to [Tipi](https://github.com/digital-fabric/tipi), a new [Polyphony](https://github.com/digital-fabric/polyphony)-based web server for Ruby. In this mode, Tipi will not be using Polyphony, but will employ multiple worker threads for handling concurrent requests. The problem is that we have X number of threads that need to be able to deal with Y number of concurrent connections.
 
-After coming up with lots of ideas for how to achieve this, I settled on the following design:
+After coming up with a bunch of different ideas for how to achieve this, I settled on the following design:
 
 - The main thread runs a libev-based event reactor, and deals with accepting connections and distributing events.
 - One or more worker threads wait for jobs to execute.
 - When a new connection is accepted, the main thread starts watching for I/O readiness.
-- When a connection is ready for reading, the main threads puts the connection on the job queue.
-- A worker thread shifts the connection from the job queue and tries to read an incoming request. If the request is not complete, the connection is watched again for read readiness.
+- When a connection is ready for reading, the main thread puts the connection on the job queue.
+- A worker thread pulls the connection from the job queue and tries to read an incoming request. If the request is not complete, the connection is watched again for read readiness.
 - When the request is complete, the worker threads continues to run the Rack app, gets the response, and tries to write the response. If the response cannot be written, the connection is watched for write readiness.
 - When the response has been written, the connection is watched again for read readiness in preparation for the next request.
+
+(A working sketch for this design is included [here as an example](https://github.com/digital-fabric/ever/blob/main/examples/http_server.rb).)
 
 What's interesting about this design is that any number of worker threads can (theoretically) handle any number of concurrent requests, since each worker thread is not tied to a specific connection, but rather work on each connection in the queue as it becomes ready (for reading or writing).
 
@@ -146,18 +148,18 @@ evloop.each { |key| handle_event(key) }
 |Method|Description|
 |------|-----------|
 |`Loop.new()`|create a new event loop.|
-|`Loop#each { |key| ... }`|Handle events in an infinite loop.|
-|`Loop#next_event`|Wait for an event and return its key.|
+|`Loop#each(&block)`|Handle events in an infinite loop.|
+|`Loop#next_event()`|Wait for an event and return its key.|
 |`Loop#watch_io(key, io, read_write, oneshot)`|Watch an IO instance for readiness.|
 |`Loop#watch_timer(key, duration, interval)`|Setup a one-shot/recurring timer.|
 |`Loop#unwatch(key)`|Stop watching specific event key.|
 |`Loop#emit(key)`|Emit a custom event.|
-|`Loop#signal`|Signal the event loop, causing it to break if currently blocking.|
-|`Loop#stop`|Stop an event loop currently blocking in `#each`.|
+|`Loop#signal()`|Signal the event loop, causing it to break if currently blocking.|
+|`Loop#stop()`|Stop an event loop currently blocking in `#each`.|
 
 ## Performance
 
-I did not yet explore all the performance implications of this new design, but [a sketch I made for an HTTP server]() shows it performing consistently at >60000 reqs/seconds on my development machine.
+I did not yet explore all the performance implications of this new design, but [a sketch I made for an HTTP server](https://github.com/digital-fabric/ever/blob/main/examples/http_server.rb) shows it performing consistently at >60000 reqs/seconds on my development machine.
 
 ## Contributing
 
