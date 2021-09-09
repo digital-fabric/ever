@@ -65,9 +65,7 @@ static inline int sym_to_events(VALUE rw) {
 
 static inline int fd_from_io(VALUE io) {
   rb_io_t *fptr;
-  VALUE underlying_io = rb_ivar_get(io, ID_ivar_io);
-  if (underlying_io != Qnil) io = underlying_io;
-  GetOpenFile(io, fptr);
+  GetOpenFile(rb_convert_type(io, T_FILE, "IO", "to_io"), fptr);
   return fptr->fd;
 }
 
