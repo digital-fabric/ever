@@ -76,8 +76,8 @@ void watcher_io_callback(EV_P_ ev_io *w, int revents)
   Watcher_t *watcher = (Watcher_t *)w;
   loop_emit(watcher->loop, watcher->key);
   if (watcher->oneshot) {
-    watcher_stop(watcher);
     loop_release_watcher(watcher->loop, watcher->key);
+    watcher_stop(watcher);
   }
 }
 
@@ -86,8 +86,8 @@ void watcher_timer_callback(EV_P_ ev_timer *w, int revents)
   Watcher_t *watcher = (Watcher_t *)w;
   loop_emit(watcher->loop, watcher->key);
   if (watcher->oneshot) {
-    watcher_stop(watcher);
     loop_release_watcher(watcher->loop, watcher->key);
+    watcher_stop(watcher);
   }
 }
 
