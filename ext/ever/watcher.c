@@ -51,6 +51,10 @@ static VALUE Watcher_allocate(VALUE klass) {
   TypedData_Get_Struct((obj), Watcher_t, &Watcher_type, (watcher))
 
 VALUE Watcher_initialize(VALUE self) {
+  Watcher_t *watcher;
+  GetWatcher(self, watcher);
+
+  watcher->key = Qnil;
   return self;
 }
 
@@ -60,11 +64,11 @@ inline void watcher_stop(Watcher_t *watcher) {
   switch (watcher->type) {
     case WATCHER_IO:
       ev_io_stop(watcher->loop->ev_loop, &watcher->io);
-      return;
+      break;
     case WATCHER_TIMER:
       ev_timer_stop(watcher->loop->ev_loop, &watcher->timer);
-      return;
   }
+  watcher->key = Qnil;
 }
 
 void watcher_io_callback(EV_P_ ev_io *w, int revents)
