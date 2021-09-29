@@ -23,7 +23,7 @@ class LoopTest < MiniTest::Test
 
   def test_io
     i, o = IO.pipe
-    
+
     @loop.watch_io('foo', i, false, true)
 
     o << 'foo'

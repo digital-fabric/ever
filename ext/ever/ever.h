@@ -34,7 +34,7 @@ typedef struct Loop_t {
   VALUE active_watchers;
   VALUE free_watchers;
   VALUE queued_events;
-  
+
   int stop;
   int in_ev_loop;
 } Loop_t;

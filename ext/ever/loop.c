@@ -216,7 +216,7 @@ VALUE Loop_watch_timer(VALUE self, VALUE key, VALUE timeout, VALUE interval) {
     rb_raise(rb_eRuntimeError, "Duplicate event key detected, event key must be unique");
 
   loop_watch_timer(loop, key, NUM2DBL(timeout), NUM2DBL(interval));
-  return self;  
+  return self;
 }
 
 VALUE Loop_unwatch(VALUE self, VALUE key) {
@@ -239,7 +239,7 @@ void Init_Loop() {
   rb_define_alloc_func(cLoop, Loop_allocate);
 
   rb_define_method(cLoop, "initialize", Loop_initialize, 0);
-  
+
   rb_define_method(cLoop, "each", Loop_each, 0);
   rb_define_method(cLoop, "next_event", Loop_next_event, 0);
   rb_define_method(cLoop, "emit", Loop_emit, 1);
