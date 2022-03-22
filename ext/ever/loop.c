@@ -193,7 +193,7 @@ VALUE Loop_watch_fd(VALUE self, VALUE key, VALUE fd, VALUE rw, VALUE oneshot) {
   if (rb_hash_aref(loop->active_watchers, key) != Qnil)
     rb_raise(rb_eRuntimeError, "Duplicate event key detected, event key must be unique");
 
-  loop_watch_fd(loop, key, NUM2INT(fd), sym_to_events(rw), RTEST(oneshot));
+  loop_watch_fd(loop, key, FIX2INT(fd), sym_to_events(rw), RTEST(oneshot));
   return self;
 }
 
