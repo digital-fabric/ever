@@ -1,14 +1,14 @@
 # frozen_string_literal: true
 
 require 'bundler/setup'
-require 'ever'
+require 'nio'
 require 'http/parser'
 require 'socket'
 
 class Connection
   attr_reader :io, :parser, :request_complete,
               :request_headers, :request_body
-  attr_accessor :response
+  attr_accessor :response, :monitor
 
   def initialize(io)
     @io = io
@@ -33,14 +33,28 @@ class Connection
   def on_message_complete
     @request_complete = true
   end
-end
 
-$job_queue = Queue.new
-$evloop = Ever::Loop.new
+  def emit_monitor(event)
+    $directive_queue << [:monitor, self, event]
+    $o << '.'
+  end
 
-worker = Thread.new do
-  while (job = $job_queue.shift)
-    handle_connection(job)
+  def emit_close
+    $directive_queue << [:close, self]
+    $o << '.'
+  end
+
+  def monitor(event)
+    @monitor&.close
+    @monitor = $selector.register(@io, event)
+    @monitor.value = self
+  rescue IOError
+    @monitor = nil
+  end
+
+  def close
+    @monitor&.close
+    @io.close
   end
 end
 
@@ -56,22 +70,22 @@ def handle_read_request(conn)
   result = conn.io.read_nonblock(16384, exception: false)
   case result
   when :wait_readable
-    $evloop.emit([:watch_io, conn, false, true])
+    conn.emit_monitor(:r)
   when :wait_writable
-    $evloop.emit([:watch_io, conn, true, true])
+    conn.emit_monitor(:w)
   when nil
-    $evloop.emit([:close, conn])
+    conn.emit_close
   else
     conn.parser << result
     if conn.request_complete
       conn.response = handle_request(conn.request_headers, conn.request_body)
       handle_write_response(conn)
     else
-      $evloop.emit([:watch_io, conn, false, true])
+      conn.emit_monitor(:r)
     end
   end
 rescue HTTP::Parser::Error, SystemCallError, IOError
-  $evloop.emit([:close, conn])
+  conn.emit_close
 end
 
 def handle_request(headers, body)
@@ -83,42 +97,69 @@ def handle_write_response(conn)
   result = conn.io.write_nonblock(conn.response, exception: false)
   case result
   when :wait_readable
-    $evloop.emit([:watch_io, conn, false, true])
+    conn.emit_monitor(:r)
   when :wait_writable
-    $evloop.emit([:watch_io, conn, true, true])
+    conn.emit_monitor(:w)
   when nil
-    $evloop.emit([:close, conn])
+    conn.emit_close
   else
     conn.setup_read_request
-    $evloop.emit([:watch_io, conn, false, true])
+    conn.emit_monitor(:r)
   end
 end
 
 def setup_connection(io)
+  # happens in the main thread
   conn = Connection.new(io)
-  $evloop.emit([:watch_io, conn, false, true])
+  conn.monitor(:r)
+end
+
+num_workers = ARGV[0] ? ARGV[0].to_i : 1
+if num_workers < 1
+  puts "Invalid number of worker threads: #{ARGV[0].inspect}"
+  exit!
 end
 
 server = TCPServer.new('0.0.0.0', 1234)
 puts "Listening on port 1234..."
-trap('SIGINT') { $evloop.stop }
-$evloop.watch_io(:accept, server, false, false)
+trap('SIGINT') { exit! }
 
-$evloop.each do |event|
-  case event
-  when :accept
-    socket = server.accept
-    setup_connection(socket)
-  when Connection
-    $job_queue << event
-  when Array
-    cmd = event[0]
-    case cmd
-    when :watch_io
-      $evloop.watch_io(event[1], event[1].io, event[2], event[3])
-    when :close
-      conn = event[1]
-      conn.io.close
+$selector = NIO::Selector.new
+$i, $o = IO.pipe
+$selector.register(server, :r)
+$selector.register($i, :r)
+
+$job_queue = Queue.new
+$directive_queue = Queue.new
+
+puts "Starting #{num_workers} worker threads..."
+num_workers.times do
+  Thread.new do
+    while (job = $job_queue.shift)
+      handle_connection(job)
+    end
+  end
+end
+
+loop do
+  $selector.select do |monitor|
+    case monitor.io
+    when server
+      socket = server.accept
+      setup_connection(socket)
+    when $i
+      $i.read(1) # flush pipe
+      while !$directive_queue.empty?
+        k, c, e = $directive_queue.shift
+        case k
+        when :monitor
+          c.monitor(e)
+        when :close
+          c.close
+        end
+      end
+    else
+      $job_queue << monitor.value
     end
   end
 end
