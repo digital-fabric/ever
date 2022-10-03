@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    ever (0.1)
+    ever (0.2)
 
 GEM
   remote: https://rubygems.org/
@@ -24,4 +24,4 @@ DEPENDENCIES
   rake-compiler (= 1.1.1)
 
 BUNDLED WITH
-   2.2.26
+   2.3.7

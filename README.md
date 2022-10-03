@@ -13,6 +13,8 @@ Ever is a [libev](http://pod.tst.eu/http://cvs.schmorp.de/libev/ev.pod)-based ev
 - Callback-less API for getting events
 - Events for I/O readiness
 - Events for one-shot or recurring timers
+- Application-defined event semantic (an event can be identifed by any object)
+- Easy API for breaking a blocking poll, no need for setting a timeout or writing to a pipe
 - Cross-thread signalling and emitting of events
 
 ## Rationale
@@ -29,9 +31,11 @@ After coming up with a bunch of different ideas for how to achieve this, I settl
 - When the request is complete, the worker threads continues to run the Rack app, gets the response, and tries to write the response. If the response cannot be written, the connection is watched for write readiness.
 - When the response has been written, the connection is watched again for read readiness in preparation for the next request.
 
-(A working sketch for this design is included [here as an example](https://github.com/digital-fabric/ever/blob/main/examples/http_server.rb).)
+(A working sketch for this design is included [here as an example](https://github.com/digital-fabric/ever/blob/main/examples/http_server_worker_threads.rb).)
 
 What's interesting about this design is that any number of worker threads can (theoretically) handle any number of concurrent requests, since each worker thread is not tied to a specific connection, but rather work on each connection in the queue as it becomes ready (for reading or writing).
+
+**Update**: actually I have seen performance degrade when adding more worker threads (also see the section below on [performance](#performance)). Switching to a [single-threaded design](https://github.com/digital-fabric/ever/blob/main/examples/http_server_single_thread.rb) improves throughput by ~25%!
 
 ## Installing
 
@@ -159,7 +163,24 @@ evloop.each { |key| handle_event(key) }
 
 ## Performance
 
-I did not yet explore all the performance implications of this new design, but [a sketch I made for an HTTP server](https://github.com/digital-fabric/ever/blob/main/examples/http_server.rb) shows it performing consistently at >60000 reqs/seconds on my development machine.
+I did not yet explore all the performance implications of this new design, but [a sketch I made for an HTTP server](https://github.com/digital-fabric/ever/blob/main/examples/http_server_worker_threads.rb) shows it performing consistently at >60,000 reqs/seconds on my development machine, with a single worker thread.
+
+However, adding more worker threads actually degrades the performance. This is both due to the cost associated with the [GVL](https://www.speedshop.co/2020/05/11/the-ruby-gvl-and-scaling.html), and contention for the job queue.
+
+A [slightly modified HTTP server script](https://github.com/digital-fabric/ever/blob/main/examples/http_server_worker_threads_separate_queues.rb), with a separate job queue for each thread, does not fare much better. A [separate design with no worker thread](https://github.com/digital-fabric/ever/blob/main/examples/http_server_single_thread.rb) (everything happens on the main thread), yields a throughput of ~75,000 reqs/seconds on the same machine, about ~25% better than the version with worker threads. Of course, when running a Rack app, having everything happen on the main thread means there's no concurrent handling of requests within a single process. Here are some indicative results, along with an equivalent implementation using [nio4r](https://github.com/socketry/nio4r/):
+
+|Script|`-t2 -c10`|`-t4 -c64`|`-t8 -c256`|`-t8 -c1024`|
+|------|---------:|---------:|----------:|-----------:|
+|[nio4r single thread](https://github.com/digital-fabric/ever/blob/main/examples/http_server_nio4r_single_thread.rb)|63775 (4.27ms)|58420 (28.80ms)|51302 (584.78ms)|47294 (1.21s)|
+|[nio4r 1 worker threads](https://github.com/digital-fabric/ever/blob/main/examples/http_server_nio4r.rb)|25276 (89.69ms)|13458 (394.90ms)|6559 (1.83s)|2660 (1.99s)|
+|[nio4r 4 worker threads](https://github.com/digital-fabric/ever/blob/main/examples/http_server_nio4r.rb)|23785 (104.84ms)|12826 (439.89ms)|6471 (1.08s)|2660 (2.00s)|
+|[nio4r 8 worker threads](https://github.com/digital-fabric/ever/blob/main/examples/http_server_nio4r.rb)|24028 (106.38ms)|12825 (429.98ms)|6409 (956.85ms)|2600 (2.00s)|
+|[ever single thread](https://github.com/digital-fabric/ever/blob/main/examples/http_server_single_thread.rb)|77994 (3.91ms)|75271 (32.32ms)|65799 (443.88ms)|56425 (1.99s)|
+|[ever 1 worker thread](https://github.com/digital-fabric/ever/blob/main/examples/http_server_nio4r.rb)|64475 (4.05ms)|69883 (31.68ms)|61917 (327.95ms)|52975 (4.56s)|
+|[ever 4 worker threads](https://github.com/digital-fabric/ever/blob/main/examples/http_server_nio4r.rb)|48763 (4.15ms)|60829 (26.15ms)|56906 (482.95ms)|54713 (6.03s)|
+|[ever 8 worker threads](https://github.com/digital-fabric/ever/blob/main/examples/http_server_nio4r.rb)|41378 (4.18ms)|55959 (36.51ms)|
+|[ever 4 worker threads, separate queues](https://github.com/digital-fabric/ever/blob/main/examples/http_server_nio4r.rb)|
+|[ever 8 worker threads, separate queues](https://github.com/digital-fabric/ever/blob/main/examples/http_server_nio4r.rb)|
 
 ## Contributing
 
