@@ -1,7 +1,6 @@
 #ifndef EVER_H
 #define EVER_H
 
-#include <execinfo.h>
 #include "ruby.h"
 #include "../libev/ev.h"
 
@@ -9,13 +8,6 @@
 #define OBJ_ID(obj) (NUM2LONG(rb_funcall(obj, rb_intern("object_id"), 0)))
 #define INSPECT(str, obj) { printf(str); VALUE s = rb_funcall(obj, rb_intern("inspect"), 0); printf(": %s\n", StringValueCStr(s)); }
 #define TRACE_CALLER() { VALUE c = rb_funcall(rb_mKernel, rb_intern("caller"), 0); INSPECT("caller: ", c); }
-#define TRACE_C_STACK() { \
-  void *entries[10]; \
-  size_t size = backtrace(entries, 10); \
-  char **strings = backtrace_symbols(entries, size); \
-  for (unsigned long i = 0; i < size; i++) printf("%s\n", strings[i]); \
-  free(strings); \
-}
 
 // exceptions
 #define TEST_EXCEPTION(ret) (rb_obj_is_kind_of(ret, rb_eException) == Qtrue)
